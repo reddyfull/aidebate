@@ -1,16 +1,64 @@
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const path = url.pathname;
+    
+    // CORS headers for all responses
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    };
     
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+      return new Response(null, { headers: corsHeaders });
+    }
+    
+    // n8n base URL
+    const N8N_BASE = 'https://reddyfull.app.n8n.cloud/webhook';
+    
+    // Proxy: Delete conversation
+    if (path.startsWith('/api/delete/')) {
+      const conversationId = path.replace('/api/delete/', '');
+      try {
+        const response = await fetch(`${N8N_BASE}/delete-conversation/ai-debate-conversation/${conversationId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.text();
+        return new Response(data, {
+          status: response.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    // Proxy: Rename conversation
+    if (path.startsWith('/api/rename/')) {
+      const conversationId = path.replace('/api/rename/', '');
+      const title = url.searchParams.get('title') || '';
+      try {
+        const response = await fetch(`${N8N_BASE}/9e228086-8b84-4e23-b624-4bcde202146e/ai-debate-conversation/${conversationId}?title=${encodeURIComponent(title)}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.text();
+        return new Response(data, {
+          status: response.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     }
     
     // Serve the main app
@@ -998,8 +1046,8 @@ function getHTML() {
       if (!confirm('Delete this conversation?')) return;
       
       try {
-        // Use the correct n8n delete endpoint
-        const response = await fetch(N8N_BASE + '/delete-conversation/ai-debate-conversation/' + conversationId);
+        // Use local proxy to avoid CORS issues
+        const response = await fetch('/api/delete/' + conversationId);
         const data = await response.json();
         
         if (!response.ok || !data.success) {
@@ -1024,8 +1072,8 @@ function getHTML() {
       if (!newTitle || newTitle.trim() === '' || newTitle === currentTitle) return;
       
       try {
-        // Use the correct n8n rename endpoint
-        const response = await fetch(N8N_BASE + '/9e228086-8b84-4e23-b624-4bcde202146e/ai-debate-conversation/' + conversationId + '?title=' + encodeURIComponent(newTitle.trim()));
+        // Use local proxy to avoid CORS issues
+        const response = await fetch('/api/rename/' + conversationId + '?title=' + encodeURIComponent(newTitle.trim()));
         
         const data = await response.json();
         
