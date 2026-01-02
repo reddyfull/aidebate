@@ -125,8 +125,8 @@
     },
     {
       "parameters": {
-        "httpMethod": "DELETE",
-        "path": "ai-debate-conversation/:id",
+        "httpMethod": "GET",
+        "path": "ai-debate-delete/:id",
         "responseMode": "responseNode",
         "options": {
           "responseHeaders": {
@@ -181,9 +181,65 @@
     },
     {
       "parameters": {
-        "content": "## 🗄️ AI Debate - Conversation API\n\nThis workflow provides REST API endpoints for managing conversations:\n\n### Endpoints:\n- `GET /ai-debate-conversations` - List all conversations\n- `GET /ai-debate-conversation/:id` - Get specific conversation with messages\n- `DELETE /ai-debate-conversation/:id` - Delete a conversation\n\n### Setup:\n1. Update the Postgres credential ID in all database nodes\n2. Activate this workflow\n3. The main debate workflow will save conversations automatically",
-        "height": 280,
-        "width": 400
+        "httpMethod": "GET",
+        "path": "ai-debate-rename/:id",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "rename-conversation-webhook",
+      "name": "✏️ Rename Conversation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 960],
+      "webhookId": "rename-conversation"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations SET title = '{{ $json.query.title }}', updated_at = NOW() WHERE id = '{{ $json.params.id }}'::uuid RETURNING id, title",
+        "options": {}
+      },
+      "id": "rename-db-query",
+      "name": "✏️ Rename in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 960],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, id: $json.id, title: $json.title } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "rename-response",
+      "name": "📤 Return Rename Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 960]
+    },
+    {
+      "parameters": {
+        "content": "## 🗄️ AI Debate - Conversation API\n\nThis workflow provides REST API endpoints for managing conversations:\n\n### Endpoints:\n- `GET /ai-debate-conversations` - List all conversations\n- `GET /ai-debate-conversation/:id` - Get specific conversation with messages\n- `GET /ai-debate-delete/:id` - Delete a conversation\n- `GET /ai-debate-rename/:id?title=NewTitle` - Rename a conversation\n\n### Setup:\n1. Update the Postgres credential ID in all database nodes\n2. Activate this workflow\n3. The main debate workflow will save conversations automatically",
+        "height": 300,
+        "width": 420
       },
       "id": "sticky-note",
       "name": "📋 Documentation",
@@ -213,6 +269,12 @@
     },
     "🗑️ Delete from DB": {
       "main": [[{ "node": "📤 Return Delete Result", "type": "main", "index": 0 }]]
+    },
+    "✏️ Rename Conversation": {
+      "main": [[{ "node": "✏️ Rename in DB", "type": "main", "index": 0 }]]
+    },
+    "✏️ Rename in DB": {
+      "main": [[{ "node": "📤 Return Rename Result", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
