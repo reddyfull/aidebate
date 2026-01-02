@@ -998,8 +998,8 @@ function getHTML() {
       if (!confirm('Delete this conversation?')) return;
       
       try {
-        // Use GET request to avoid CORS preflight issues
-        const response = await fetch(N8N_BASE + '/ai-debate-delete/' + conversationId);
+        // Use the correct n8n delete endpoint
+        const response = await fetch(N8N_BASE + '/delete-conversation/ai-debate-conversation/' + conversationId);
         const data = await response.json();
         
         if (!response.ok || !data.success) {
@@ -1024,8 +1024,8 @@ function getHTML() {
       if (!newTitle || newTitle.trim() === '' || newTitle === currentTitle) return;
       
       try {
-        // Use GET request with query parameter to avoid CORS preflight issues
-        const response = await fetch(N8N_BASE + '/ai-debate-rename/' + conversationId + '?title=' + encodeURIComponent(newTitle.trim()));
+        // Use the correct n8n rename endpoint
+        const response = await fetch(N8N_BASE + '/9e228086-8b84-4e23-b624-4bcde202146e/ai-debate-conversation/' + conversationId + '?title=' + encodeURIComponent(newTitle.trim()));
         
         const data = await response.json();
         
