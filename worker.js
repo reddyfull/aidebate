@@ -998,8 +998,11 @@ function getHTML() {
       if (!confirm('Delete this conversation?')) return;
       
       try {
-        // Use simple GET-based delete endpoint (avoids CORS preflight issues)
-        const response = await fetch(N8N_BASE + '/ai-debate-delete/' + conversationId);
+        // Use DELETE method to the conversation endpoint
+        const response = await fetch(N8N_BASE + '/ai-debate-conversation/' + conversationId, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        });
         const data = await response.json();
         
         if (!response.ok || !data.success) {
