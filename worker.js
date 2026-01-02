@@ -998,12 +998,16 @@ function getHTML() {
       if (!confirm('Delete this conversation?')) return;
       
       try {
-        const response = await fetch(N8N_BASE + '/ai-debate-conversation/' + conversationId, { method: 'DELETE' });
-        if (!response.ok) {
-          console.error('Delete failed:', response.status);
+        // Use simple GET-based delete endpoint (avoids CORS preflight issues)
+        const response = await fetch(N8N_BASE + '/ai-debate-delete/' + conversationId);
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+          console.error('Delete failed:', response.status, data);
           alert('Failed to delete conversation. Please try again.');
           return;
         }
+        
         if (currentConversationId === conversationId) {
           localStorage.removeItem('aidebate_conversationId');
           startNewChat();
@@ -1020,14 +1024,17 @@ function getHTML() {
       if (!newTitle || newTitle.trim() === '' || newTitle === currentTitle) return;
       
       try {
-        const response = await fetch(N8N_BASE + '/ai-debate-conversation/' + conversationId, {
-          method: 'PUT',
+        // Use POST-based rename endpoint
+        const response = await fetch(N8N_BASE + '/ai-debate-rename/' + conversationId, {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: newTitle.trim() })
         });
         
-        if (!response.ok) {
-          console.error('Rename failed:', response.status);
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+          console.error('Rename failed:', response.status, data);
           alert('Failed to rename conversation. Please try again.');
           return;
         }
