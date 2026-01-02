@@ -505,6 +505,15 @@ function getHTML() {
     
     .source-model-icon { font-size: 18px; }
     .source-model-name { font-size: 13px; font-weight: 600; }
+    .source-model-link { 
+      color: var(--accent-blue); 
+      text-decoration: none; 
+      transition: color 0.2s;
+    }
+    .source-model-link:hover { 
+      color: var(--accent-purple); 
+      text-decoration: underline;
+    }
     .source-model-role { font-size: 11px; color: var(--text-muted); margin-left: auto; }
     
     .source-contribution {
@@ -835,11 +844,14 @@ function getHTML() {
         html += '</div>';
       }
       
-      // Sources section
+      // Sources section with clickable links
       if (data.sources && data.sources.length > 0) {
         html += '<div class="activity-section"><div class="activity-section-title">AI Model Contributions</div>';
         data.sources.forEach(function(source) {
-          html += '<div class="source-item"><div class="source-model"><span class="source-model-icon">' + (source.icon || '🤖') + '</span><span class="source-model-name">' + (source.model || source.model_name || 'AI Model') + '</span><span class="source-model-role">' + (source.role || source.model_role || '') + '</span></div><div class="source-contribution">' + (source.contribution || '') + '</div></div>';
+          var modelName = source.model || source.model_name || 'AI Model';
+          var modelUrl = source.url || '';
+          var modelLink = modelUrl ? '<a href="' + modelUrl + '" target="_blank" class="source-model-link">' + modelName + ' ↗</a>' : modelName;
+          html += '<div class="source-item"><div class="source-model"><span class="source-model-icon">' + (source.icon || '🤖') + '</span><span class="source-model-name">' + modelLink + '</span><span class="source-model-role">' + (source.role || source.model_role || '') + '</span></div><div class="source-contribution">' + (source.contribution || '') + '</div></div>';
         });
         html += '</div>';
       }
@@ -893,12 +905,12 @@ function getHTML() {
       }
       
       container.innerHTML = conversations.map(function(conv) {
-        return '<div class="chat-item ' + (conv.id === currentConversationId ? 'active' : '') + '" onclick="loadConversation(\\'' + conv.id + '\\')">' +
+        return '<div class="chat-item ' + (conv.id === currentConversationId ? 'active' : '') + '" onclick="loadConversation(\\x27' + conv.id + '\\x27)">' +
           '<div class="chat-item-title">' + escapeHtml(conv.title || 'Untitled Debate') + '</div>' +
           '<div class="chat-item-meta">' +
           '<span>📊 ' + (conv.consensus_score || 0) + '%</span>' +
           '<span>' + formatDate(conv.updated_at) + '</span>' +
-          '<button class="chat-item-delete" onclick="event.stopPropagation(); deleteConversation(\\'' + conv.id + '\\')">🗑️</button>' +
+          '<button class="chat-item-delete" onclick="event.stopPropagation(); deleteConversation(\\x27' + conv.id + '\\x27)">🗑️</button>' +
           '</div></div>';
       }).join('');
     }
