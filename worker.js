@@ -672,8 +672,8 @@ function getHTML() {
 
   <script>
     // ===== STATE =====
-    let currentSessionId = null;
-    let currentConversationId = null;
+    let currentSessionId = localStorage.getItem('aidebate_sessionId') || null;
+    let currentConversationId = localStorage.getItem('aidebate_conversationId') || null;
     let conversations = [];
     let isLoading = false;
     
@@ -681,7 +681,14 @@ function getHTML() {
     
     // ===== INITIALIZATION =====
     document.addEventListener('DOMContentLoaded', () => {
-      loadConversations();
+      loadConversations().then(() => {
+        // Auto-load last conversation if stored in localStorage
+        if (currentConversationId && conversations.some(c => c.id === currentConversationId)) {
+          loadConversation(currentConversationId);
+        } else if (conversations && conversations.length > 0) {
+          console.log('Found', conversations.length, 'conversations. Click one to continue, or start new.');
+        }
+      });
       autoResizeTextarea();
     });
     
@@ -689,12 +696,15 @@ function getHTML() {
     function startNewChat() {
       currentSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       currentConversationId = null;
+      localStorage.removeItem('aidebate_conversationId');
+      localStorage.setItem('aidebate_sessionId', currentSessionId);
       
       document.getElementById('messagesContainer').innerHTML = 
         '<div class="welcome-screen" id="welcomeScreen">' +
         '<div class="welcome-icon">🏛️</div>' +
         '<h2 class="welcome-title">AI Council Debate System</h2>' +
         '<p class="welcome-subtitle">Submit any topic and watch 5 frontier AI models engage in structured academic debate.</p>' +
+        '<p class="welcome-hint" style="color: #888; font-size: 0.85rem; margin-top: 1rem;">💡 Click a conversation on the left to continue it, or type a new topic below.</p>' +
         '</div>';
       
       document.getElementById('chatTitle').textContent = 'New Debate';
@@ -752,16 +762,22 @@ function getHTML() {
           updateActivity(data);
         }
         
-        // Update conversation ID and title
+        // Update conversation ID and title FIRST (before refreshing list)
         if (data.conversation_id) {
           currentConversationId = data.conversation_id;
+          localStorage.setItem('aidebate_conversationId', currentConversationId);
+          console.log('Set currentConversationId:', currentConversationId);
+        }
+        
+        if (currentSessionId) {
+          localStorage.setItem('aidebate_sessionId', currentSessionId);
         }
         
         if (data.title) {
           document.getElementById('chatTitle').textContent = data.title;
         }
         
-        // Refresh conversation list
+        // Refresh conversation list (will highlight current conversation)
         loadConversations();
         
       } catch (error) {
@@ -905,12 +921,12 @@ function getHTML() {
       }
       
       container.innerHTML = conversations.map(function(conv) {
-        return '<div class="chat-item ' + (conv.id === currentConversationId ? 'active' : '') + '" onclick="loadConversation(\\x27' + conv.id + '\\x27)">' +
+        return '<div class="chat-item ' + (conv.id === currentConversationId ? 'active' : '') + '" onclick="loadConversation(\\'' + conv.id + '\\')">' +
           '<div class="chat-item-title">' + escapeHtml(conv.title || 'Untitled Debate') + '</div>' +
           '<div class="chat-item-meta">' +
           '<span>📊 ' + (conv.consensus_score || 0) + '%</span>' +
           '<span>' + formatDate(conv.updated_at) + '</span>' +
-          '<button class="chat-item-delete" onclick="event.stopPropagation(); deleteConversation(\\x27' + conv.id + '\\x27)">🗑️</button>' +
+          '<button class="chat-item-delete" onclick="event.stopPropagation(); deleteConversation(\\'' + conv.id + '\\')">🗑️</button>' +
           '</div></div>';
       }).join('');
     }
@@ -922,6 +938,8 @@ function getHTML() {
         
         currentConversationId = conversationId;
         currentSessionId = data.session_id;
+        localStorage.setItem('aidebate_conversationId', conversationId);
+        localStorage.setItem('aidebate_sessionId', data.session_id);
         
         document.getElementById('chatTitle').textContent = data.title || 'Debate';
         
@@ -942,6 +960,8 @@ function getHTML() {
         if (data.sources) {
           updateActivity({ sources: data.sources, stats: { consensus: data.consensus_score } });
         }
+        
+        renderConversationList(); // Re-render to show active state
         
       } catch (error) {
         console.error('Error loading conversation:', error);
