@@ -119,6 +119,7 @@ function getHTML() {
       cursor: pointer;
       margin-bottom: 2px;
       transition: background 0.2s;
+      position: relative;
     }
     
     .chat-item:hover {
@@ -137,6 +138,7 @@ function getHTML() {
       overflow: hidden;
       text-overflow: ellipsis;
       margin-bottom: 4px;
+      padding-right: 50px;
     }
     
     .chat-item-meta {
@@ -147,18 +149,38 @@ function getHTML() {
       gap: 8px;
     }
     
-    .chat-item-delete {
+    .chat-item-actions {
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      display: flex;
+      gap: 2px;
       opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    .chat-item:hover .chat-item-actions {
+      opacity: 1;
+    }
+    
+    .chat-item-btn {
       background: none;
       border: none;
       color: var(--text-muted);
       cursor: pointer;
-      padding: 4px;
-      margin-left: auto;
+      padding: 4px 6px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      transition: background 0.2s, color 0.2s;
     }
     
-    .chat-item:hover .chat-item-delete {
-      opacity: 1;
+    .chat-item-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-primary);
+    }
+    
+    .chat-item-delete:hover {
+      color: #ff6b6b !important;
     }
     
     .sidebar-footer {
@@ -921,12 +943,16 @@ function getHTML() {
       }
       
       container.innerHTML = conversations.map(function(conv) {
+        const title = escapeHtml(conv.title || 'Untitled Debate');
         return '<div class="chat-item ' + (conv.id === currentConversationId ? 'active' : '') + '" onclick="loadConversation(\\'' + conv.id + '\\')">' +
-          '<div class="chat-item-title">' + escapeHtml(conv.title || 'Untitled Debate') + '</div>' +
+          '<div class="chat-item-title">' + title + '</div>' +
           '<div class="chat-item-meta">' +
           '<span>📊 ' + (conv.consensus_score || 0) + '%</span>' +
           '<span>' + formatDate(conv.updated_at) + '</span>' +
-          '<button class="chat-item-delete" onclick="event.stopPropagation(); deleteConversation(\\'' + conv.id + '\\')">🗑️</button>' +
+          '</div>' +
+          '<div class="chat-item-actions">' +
+          '<button class="chat-item-btn" onclick="event.stopPropagation(); renameConversation(\\'' + conv.id + '\\', \\'' + title.replace(/'/g, "\\\\'") + '\\');" title="Rename">✏️</button>' +
+          '<button class="chat-item-btn chat-item-delete" onclick="event.stopPropagation(); deleteConversation(\\'' + conv.id + '\\');" title="Delete">🗑️</button>' +
           '</div></div>';
       }).join('');
     }
@@ -972,11 +998,49 @@ function getHTML() {
       if (!confirm('Delete this conversation?')) return;
       
       try {
-        await fetch(N8N_BASE + '/ai-debate-conversation/' + conversationId, { method: 'DELETE' });
-        if (currentConversationId === conversationId) startNewChat();
+        const response = await fetch(N8N_BASE + '/ai-debate-conversation/' + conversationId, { method: 'DELETE' });
+        if (!response.ok) {
+          console.error('Delete failed:', response.status);
+          alert('Failed to delete conversation. Please try again.');
+          return;
+        }
+        if (currentConversationId === conversationId) {
+          localStorage.removeItem('aidebate_conversationId');
+          startNewChat();
+        }
         loadConversations();
       } catch (error) {
         console.error('Error deleting conversation:', error);
+        alert('Error deleting conversation: ' + error.message);
+      }
+    }
+    
+    async function renameConversation(conversationId, currentTitle) {
+      const newTitle = prompt('Enter new name for this debate:', currentTitle);
+      if (!newTitle || newTitle.trim() === '' || newTitle === currentTitle) return;
+      
+      try {
+        const response = await fetch(N8N_BASE + '/ai-debate-conversation/' + conversationId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newTitle.trim() })
+        });
+        
+        if (!response.ok) {
+          console.error('Rename failed:', response.status);
+          alert('Failed to rename conversation. Please try again.');
+          return;
+        }
+        
+        // Update title in UI if this is the current conversation
+        if (currentConversationId === conversationId) {
+          document.getElementById('chatTitle').textContent = newTitle.trim();
+        }
+        
+        loadConversations();
+      } catch (error) {
+        console.error('Error renaming conversation:', error);
+        alert('Error renaming conversation: ' + error.message);
       }
     }
     
