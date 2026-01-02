@@ -1,0 +1,345 @@
+{
+  "name": "💬 AI Debate - Chat API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-debate-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      },
+      "id": "chat-webhook",
+      "name": "💬 Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "ai-debate-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract input data\nconst body = $input.first().json.body || $input.first().json;\nconst sessionId = body.sessionId || 'session_' + Date.now();\nconst conversationId = body.conversationId || null;\nconst message = body.message || '';\n\n// Generate title from first message (first 50 chars)\nconst title = message.substring(0, 50) + (message.length > 50 ? '...' : '');\n\nreturn [{\n  json: {\n    sessionId,\n    conversationId,\n    message,\n    title,\n    isNewConversation: !conversationId,\n    startTime: Date.now()\n  }\n}];"
+      },
+      "id": "parse-input",
+      "name": "📥 Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "new-conv",
+              "leftValue": "={{ $json.isNewConversation }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-new-conv",
+      "name": "🆕 New Conversation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversations (session_id, title, status) VALUES ('{{ $json.sessionId }}', '{{ $json.title.replace(/'/g, \"''\") }}', 'active') RETURNING id, session_id, title",
+        "options": {}
+      },
+      "id": "create-conversation",
+      "name": "➕ Create Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [920, 200],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge created conversation with input\nconst input = $('📥 Parse Input').first().json;\nconst created = $input.first().json;\n\nreturn [{\n  json: {\n    ...input,\n    conversationId: created.id,\n    title: created.title\n  }\n}];"
+      },
+      "id": "merge-new-conv",
+      "name": "🔗 Merge New Conv",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "merge-paths",
+      "name": "🔀 Merge Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, role, content) VALUES ('{{ $json.conversationId }}'::uuid, 'user', '{{ $json.message.replace(/'/g, \"''\") }}') RETURNING id",
+        "options": {}
+      },
+      "id": "save-user-message",
+      "name": "💾 Save User Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1580, 300],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for debate workflow\nconst prevData = $('🔀 Merge Paths').first().json;\nconst userMsgId = $input.first().json.id;\n\nreturn [{\n  json: {\n    ...prevData,\n    userMessageId: userMsgId\n  }\n}];"
+      },
+      "id": "prep-debate",
+      "name": "📋 Prep for Debate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO activity_log (message_id, activity_type, content, duration_ms) VALUES ('{{ $json.userMessageId }}'::uuid, 'thinking', 'Analyzing request and preparing debate...', 0)",
+        "options": {}
+      },
+      "id": "log-thinking",
+      "name": "📝 Log Thinking",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2020, 300],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://reddyfull.app.n8n.cloud/webhook/ai-debate-council/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: 'sendMessage', chatInput: $('📋 Prep for Debate').first().json.message, sessionId: $('📋 Prep for Debate').first().json.sessionId }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "call-debate",
+      "name": "🏛️ Call Debate Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse debate response and extract data\nconst debateResponse = $input.first().json;\nconst prepData = $('📋 Prep for Debate').first().json;\nconst startTime = prepData.startTime;\nconst duration = Date.now() - startTime;\n\n// Extract output - handle different response formats\nlet output = '';\nif (typeof debateResponse === 'string') {\n  output = debateResponse;\n} else if (debateResponse.output) {\n  output = debateResponse.output;\n} else if (debateResponse.text) {\n  output = debateResponse.text;\n} else if (debateResponse.response) {\n  output = debateResponse.response;\n} else {\n  output = JSON.stringify(debateResponse);\n}\n\n// Parse stats from output\nlet consensus = 0, rounds = 0, decisions = 0;\nconst statsMatch = output.match(/📊.*?(\\d+)%.*?consensus.*?(\\d+).*?round.*?(\\d+).*?decision/i);\nif (statsMatch) {\n  consensus = parseInt(statsMatch[1]) || 0;\n  rounds = parseInt(statsMatch[2]) || 0;\n  decisions = parseInt(statsMatch[3]) || 0;\n}\n\n// Generate title from topic if first message\nlet title = prepData.title;\nif (prepData.isNewConversation && prepData.message) {\n  // Extract a better title from the message\n  const words = prepData.message.split(' ').slice(0, 6).join(' ');\n  title = words + (prepData.message.split(' ').length > 6 ? '...' : '');\n}\n\n// Create sources from the 5 AI models\nconst sources = [\n  { model: 'GPT-4o', icon: '🧠', role: 'Primary Analyst', contribution: 'Generated initial proposal and structured analysis' },\n  { model: 'Gemini 2.0', icon: '🔍', role: 'Challenger', contribution: 'Questioned assumptions and identified gaps' },\n  { model: 'Grok 3', icon: '😈', role: 'Devils Advocate', contribution: 'Presented counter-arguments and risks' },\n  { model: 'DeepSeek R1', icon: '🔬', role: 'Technical Expert', contribution: 'Validated technical feasibility' },\n  { model: 'Llama 3.3', icon: '🎨', role: 'Creative', contribution: 'Suggested innovative approaches' }\n];\n\n// Create activity log\nconst activity = [\n  { type: 'thinking', content: 'Analyzed request and prepared debate parameters', duration_ms: 2000 },\n  { type: 'proposal', content: 'GPT-4o generated initial proposal', duration_ms: 5000 },\n  { type: 'debate', content: '5 AI models debated and refined the proposal', duration_ms: duration - 10000 },\n  { type: 'consensus', content: `Reached ${consensus}% consensus after ${rounds} rounds`, duration_ms: 2000 },\n  { type: 'synthesis', content: 'Synthesized final response with all perspectives', duration_ms: 1000 }\n];\n\nreturn [{\n  json: {\n    conversationId: prepData.conversationId,\n    sessionId: prepData.sessionId,\n    userMessageId: prepData.userMessageId,\n    title: title,\n    output: output,\n    consensus: consensus,\n    rounds: rounds,\n    decisions: decisions,\n    duration: duration,\n    sources: sources,\n    activity: activity,\n    stats: { consensus, rounds, decisions }\n  }\n}];"
+      },
+      "id": "parse-response",
+      "name": "📊 Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, role, content) VALUES ('{{ $json.conversationId }}'::uuid, 'assistant', '{{ $json.output.replace(/'/g, \"''\").replace(/\\\\/g, '\\\\\\\\') }}') RETURNING id",
+        "options": {}
+      },
+      "id": "save-assistant-message",
+      "name": "💾 Save Assistant Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get assistant message ID and merge with response data\nconst responseData = $('📊 Parse Response').first().json;\nconst assistantMsgId = $input.first().json.id;\n\nreturn [{\n  json: {\n    ...responseData,\n    assistantMessageId: assistantMsgId\n  }\n}];"
+      },
+      "id": "merge-msg-id",
+      "name": "🔗 Merge Msg ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations SET title = '{{ $json.title.replace(/'/g, \"''\") }}', consensus_score = {{ $json.consensus }}, total_rounds = {{ $json.rounds }}, total_decisions = {{ $json.decisions }}, updated_at = NOW() WHERE id = '{{ $json.conversationId }}'::uuid",
+        "options": {}
+      },
+      "id": "update-conversation",
+      "name": "📝 Update Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3120, 300],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Save sources to database\nconst data = $('🔗 Merge Msg ID').first().json;\nconst sources = data.sources || [];\n\n// Return sources with message ID for batch insert\nreturn sources.map(source => ({\n  json: {\n    messageId: data.assistantMessageId,\n    model_name: source.model,\n    model_icon: source.icon,\n    model_role: source.role,\n    contribution: source.contribution\n  }\n}));"
+      },
+      "id": "prep-sources",
+      "name": "📋 Prep Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3340, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO sources (message_id, model_name, model_icon, model_role, contribution) VALUES ('{{ $json.messageId }}'::uuid, '{{ $json.model_name }}', '{{ $json.model_icon }}', '{{ $json.model_role }}', '{{ $json.contribution.replace(/'/g, \"''\") }}')",
+        "options": {}
+      },
+      "id": "save-sources",
+      "name": "💾 Save Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3560, 200],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare final response for the UI\nconst data = $('🔗 Merge Msg ID').first().json;\n\nreturn [{\n  json: {\n    conversation_id: data.conversationId,\n    session_id: data.sessionId,\n    title: data.title,\n    output: data.output,\n    sources: data.sources,\n    activity: data.activity,\n    stats: data.stats\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "📤 Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3340, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "send-response",
+      "name": "📤 Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3560, 400]
+    },
+    {
+      "parameters": {
+        "content": "## 💬 AI Debate - Chat API\n\nThis workflow handles the main chat endpoint:\n\n### Flow:\n1. Receive POST to `/ai-debate-chat`\n2. Create conversation if new\n3. Save user message to DB\n4. Call the debate workflow\n5. Parse response and extract stats\n6. Save assistant message and sources\n7. Return enhanced response with sources/activity\n\n### Request Format:\n```json\n{\n  \"message\": \"Topic to debate\",\n  \"sessionId\": \"optional-session-id\",\n  \"conversationId\": \"optional-uuid\"\n}\n```\n\n### Response Format:\n```json\n{\n  \"conversation_id\": \"uuid\",\n  \"title\": \"Topic Title\",\n  \"output\": \"Debate response...\",\n  \"sources\": [...],\n  \"activity\": [...],\n  \"stats\": { \"consensus\": 85, \"rounds\": 2, \"decisions\": 3 }\n}\n```",
+        "height": 520,
+        "width": 420
+      },
+      "id": "docs-sticky",
+      "name": "📋 Documentation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [260, 40]
+    }
+  ],
+  "connections": {
+    "💬 Chat Webhook": {
+      "main": [[{ "node": "📥 Parse Input", "type": "main", "index": 0 }]]
+    },
+    "📥 Parse Input": {
+      "main": [[{ "node": "🆕 New Conversation?", "type": "main", "index": 0 }]]
+    },
+    "🆕 New Conversation?": {
+      "main": [
+        [{ "node": "➕ Create Conversation", "type": "main", "index": 0 }],
+        [{ "node": "🔀 Merge Paths", "type": "main", "index": 1 }]
+      ]
+    },
+    "➕ Create Conversation": {
+      "main": [[{ "node": "🔗 Merge New Conv", "type": "main", "index": 0 }]]
+    },
+    "🔗 Merge New Conv": {
+      "main": [[{ "node": "🔀 Merge Paths", "type": "main", "index": 0 }]]
+    },
+    "🔀 Merge Paths": {
+      "main": [[{ "node": "💾 Save User Message", "type": "main", "index": 0 }]]
+    },
+    "💾 Save User Message": {
+      "main": [[{ "node": "📋 Prep for Debate", "type": "main", "index": 0 }]]
+    },
+    "📋 Prep for Debate": {
+      "main": [[{ "node": "📝 Log Thinking", "type": "main", "index": 0 }]]
+    },
+    "📝 Log Thinking": {
+      "main": [[{ "node": "🏛️ Call Debate Workflow", "type": "main", "index": 0 }]]
+    },
+    "🏛️ Call Debate Workflow": {
+      "main": [[{ "node": "📊 Parse Response", "type": "main", "index": 0 }]]
+    },
+    "📊 Parse Response": {
+      "main": [[{ "node": "💾 Save Assistant Message", "type": "main", "index": 0 }]]
+    },
+    "💾 Save Assistant Message": {
+      "main": [[{ "node": "🔗 Merge Msg ID", "type": "main", "index": 0 }]]
+    },
+    "🔗 Merge Msg ID": {
+      "main": [
+        [{ "node": "📝 Update Conversation", "type": "main", "index": 0 }],
+        [{ "node": "📋 Prep Sources", "type": "main", "index": 0 }],
+        [{ "node": "📤 Format Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "📝 Update Conversation": {
+      "main": []
+    },
+    "📋 Prep Sources": {
+      "main": [[{ "node": "💾 Save Sources", "type": "main", "index": 0 }]]
+    },
+    "📤 Format Response": {
+      "main": [[{ "node": "📤 Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

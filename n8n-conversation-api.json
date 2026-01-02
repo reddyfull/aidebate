@@ -1,0 +1,221 @@
+{
+  "name": "🗄️ AI Debate - Conversation API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ai-debate-conversations",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "list-conversations-webhook",
+      "name": "📋 List Conversations",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "list-conversations"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, session_id, title, created_at, updated_at, consensus_score, total_rounds, status FROM conversations ORDER BY updated_at DESC LIMIT 50",
+        "options": {}
+      },
+      "id": "list-db-query",
+      "name": "🔍 Get Conversations",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 300],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { conversations: $json } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "list-response",
+      "name": "📤 Return List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ai-debate-conversation/:id",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "get-conversation-webhook",
+      "name": "📄 Get Conversation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 520],
+      "webhookId": "get-conversation"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT c.*, json_agg(json_build_object('id', m.id, 'role', m.role, 'content', m.content, 'created_at', m.created_at) ORDER BY m.created_at) as messages FROM conversations c LEFT JOIN messages m ON m.conversation_id = c.id WHERE c.id = '{{ $json.params.id }}'::uuid GROUP BY c.id",
+        "options": {}
+      },
+      "id": "get-db-query",
+      "name": "🔍 Get Full Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 520],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get conversation and its sources\nconst conv = $input.first().json;\n\nif (!conv || !conv.id) {\n  return [{ json: { error: 'Conversation not found' } }];\n}\n\n// Get sources for the last message\nconst messages = conv.messages || [];\nconst lastAssistantMsg = messages.filter(m => m.role === 'assistant').pop();\n\nreturn [{\n  json: {\n    id: conv.id,\n    session_id: conv.session_id,\n    title: conv.title,\n    created_at: conv.created_at,\n    updated_at: conv.updated_at,\n    consensus_score: conv.consensus_score,\n    total_rounds: conv.total_rounds,\n    status: conv.status,\n    messages: messages.filter(m => m.id !== null),\n    sources: [] // Will be populated from sources table\n  }\n}];"
+      },
+      "id": "format-conversation",
+      "name": "📝 Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 520]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "get-response",
+      "name": "📤 Return Conversation",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 520]
+    },
+    {
+      "parameters": {
+        "httpMethod": "DELETE",
+        "path": "ai-debate-conversation/:id",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "delete-conversation-webhook",
+      "name": "🗑️ Delete Conversation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 740],
+      "webhookId": "delete-conversation"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM conversations WHERE id = '{{ $json.params.id }}'::uuid RETURNING id",
+        "options": {}
+      },
+      "id": "delete-db-query",
+      "name": "🗑️ Delete from DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 740],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "ai-debate-chat"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, deleted: $json.id } }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "delete-response",
+      "name": "📤 Return Delete Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 740]
+    },
+    {
+      "parameters": {
+        "content": "## 🗄️ AI Debate - Conversation API\n\nThis workflow provides REST API endpoints for managing conversations:\n\n### Endpoints:\n- `GET /ai-debate-conversations` - List all conversations\n- `GET /ai-debate-conversation/:id` - Get specific conversation with messages\n- `DELETE /ai-debate-conversation/:id` - Delete a conversation\n\n### Setup:\n1. Update the Postgres credential ID in all database nodes\n2. Activate this workflow\n3. The main debate workflow will save conversations automatically",
+        "height": 280,
+        "width": 400
+      },
+      "id": "sticky-note",
+      "name": "📋 Documentation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [260, 40]
+    }
+  ],
+  "connections": {
+    "📋 List Conversations": {
+      "main": [[{ "node": "🔍 Get Conversations", "type": "main", "index": 0 }]]
+    },
+    "🔍 Get Conversations": {
+      "main": [[{ "node": "📤 Return List", "type": "main", "index": 0 }]]
+    },
+    "📄 Get Conversation": {
+      "main": [[{ "node": "🔍 Get Full Conversation", "type": "main", "index": 0 }]]
+    },
+    "🔍 Get Full Conversation": {
+      "main": [[{ "node": "📝 Format Response", "type": "main", "index": 0 }]]
+    },
+    "📝 Format Response": {
+      "main": [[{ "node": "📤 Return Conversation", "type": "main", "index": 0 }]]
+    },
+    "🗑️ Delete Conversation": {
+      "main": [[{ "node": "🗑️ Delete from DB", "type": "main", "index": 0 }]]
+    },
+    "🗑️ Delete from DB": {
+      "main": [[{ "node": "📤 Return Delete Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
